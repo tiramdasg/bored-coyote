@@ -24,6 +24,9 @@ VERBOSE = os.getenv("VERBOSE", 1)
 
 RETRIES = int(os.getenv("RETRIES", 3))
 
+UTC_START = 1554076800
+UTC_END = 1555472130
+
 
 def serialize(obj):
     if isinstance(obj, datetime.datetime):
@@ -93,10 +96,7 @@ class DataProvider:
             message = f"Kafka producer initialization failed. Is kafka under {BOOTSTRAP_SERVER} running?"
             raise NoBrokersAvailable(message)
 
-        # this is the
         self.topic = "rce2"
-        # id: identifier, body: the comment, created_utc: timestamp of commenting, subreddit: where it was posted
-        # these fields are the ones we filter for, not the entire data point sent by kafka
         self.relevant_fields = ["id", "body", "created_utc", "subreddit"]
         self.topic_split_map, self.sets = read_subreddit_distribution_and_define_topic_split()
         logging.info("Startup complete.")
@@ -106,7 +106,6 @@ class DataProvider:
         for comment in self.load_json_chunks():
             self.producer.send(self.topic, comment)
             if SLOW_MODE:
-                # sleep to keep the waste of space contained
                 time.sleep(random.random() * DELAY_FACTOR)
 
     def load_json_chunks(self):
@@ -115,19 +114,20 @@ class DataProvider:
         with open(self.path, 'rb') as file:
             data_buffer = b''
             for line in file:
-
                 data_buffer += line
                 if b'"total_awards_received":' in line:
                     try:
                         data_buffer = json.loads(data_buffer.decode(encoding="utf-8", errors="ignore"))
 
-                        # drop 'unnecessary' data
                         data_buffer = {key: data_buffer[key] for key in self.relevant_fields
                                        if data_buffer["body"] != "[deleted]" and data_buffer["body"]}
-                        try:
-                            subreddits[data_buffer["subreddit"]] += 1
-                        except KeyError:
-                            pass
+                        if data_buffer["created_utc"] < UTC_START or data_buffer["created_utc"] > UTC_END:
+                            data_buffer = {}
+                        else:
+                            try:
+                                subreddits[data_buffer["subreddit"]] += 1
+                            except KeyError:
+                                pass
 
                         if data_buffer:
                             self.add_split_group(data_buffer)
@@ -150,7 +150,7 @@ class DataProvider:
 
 
 if __name__ == '__main__':
-    logging.basicConfig(
+    logging.basic(
         level=logging.INFO,
         format="%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:%(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
