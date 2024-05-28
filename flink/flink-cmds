@@ -1,0 +1,14 @@
+# TODO: clean up + make useful/correct/complete. I.E. include information on how and why we should use docker-compose for this.
+# build Dockerfile...
+
+FLINK_PROPERTIES=jobmanager.rpc.address:jobmanager
+sudo docker run --rm --name=custom_mlclient1     --network flink-network     --env FLINK_PROPERTIES="$FLINK_PROPERTIES"   ml_client_taskmanager taskmanager
+
+#anderes terminal
+FLINK_PROPERTIES=jobmanager.rpc.address:jobmanager
+sudo docker run --rm --name=jobmanager --network flink-network --publish 8081:8081 --env FLINK_PROPERTIES="$FLINK_PROPERTIES" ml_client_taskmanager jobmanager
+
+
+#job ausführung mit terminal:
+ /opt/flink-1.19.0/bin/flink run -py /opt/flink-1.19.0/examples/python/datastream/word_count.py
+

@@ -1,0 +1,171 @@
+services:
+  jobmanager:
+    image: ml_client_taskmanager
+    command: jobmanager
+    container_name: jobmanager
+    ports:
+      - "8081:8081"
+    networks:
+      - appnet
+    environment:
+      - KAFKA_1_BOOTSTRAP_SERVERS=kafka-1:9092
+      - KAFKA_2_BOOTSTRAP_SERVERS=kafka-2:9093
+      - RUNTIME_ENV=docker
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        state.backend: filesystem
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        state.savepoints.dir: file:///tmp/flink-savepoints
+        heartbeat.interval: 1000
+        heartbeat.timeout: 5000
+        rest.flamegraph.enabled: true
+        web.backpressure.refresh-interval: 10000
+        python.executable.path: /usr/local/bin/python3
+
+    volumes:
+      - ./src:/tmp/src
+  taskmanager-0:
+    image: ml_client_taskmanager
+    command: taskmanager
+    container_name: data-splitter
+    networks:
+      - appnet
+    volumes:
+      - flink_data_0:/tmp/
+      - ./src:/tmp/src
+    environment:
+      - KAFKA_1_BOOTSTRAP_SERVERS=kafka-1:9092
+      - KAFKA_2_BOOTSTRAP_SERVERS=kafka-2:9093
+      - RUNTIME_ENV=docker
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 5
+        state.backend: filesystem
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        state.savepoints.dir: file:///tmp/flink-savepoints
+        heartbeat.interval: 1000
+        heartbeat.timeout: 5000
+    depends_on:
+      - jobmanager
+  zookeeper:
+      image: bitnami/zookeeper:3.5
+      hostname: zookeeper
+      container_name: zookeeper
+      ports:
+        - "2181:2181"
+      networks:
+        - appnet
+      environment:
+        - ZOOKEEPER_CLIENT_PORT=2181
+        - ZOOKEEPER_SERVER_ID=1
+        - ZOOKEEPER_SERVERS=Zookeeper:2888:3888
+        - ALLOW_ANONYMOUS_LOGIN=yes
+      volumes:
+        - zookeeper_data:/bitnami/zookeeper
+  kafka-1:
+    image: bitnami/kafka:2.8.1
+    container_name: kafka-1
+    hostname: kafka-1
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    networks:
+      - appnet
+    environment:
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_BROKER_ID=1
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=INTERNAL://:9092,EXTERNAL://:29092
+      - KAFKA_ADVERTISED_PORT=9092
+      - KAFKA_ADVERTISED_HOST_NAME=kafka-1
+      - KAFKA_CFG_ADVERTISED_LISTENERS=INTERNAL://kafka-1:9092,EXTERNAL://localhost:29092
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_NUM_PARTITIONS=5
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=1
+    volumes:
+      - kafka_1_data:/bitnami/kafka
+    depends_on:
+      - zookeeper
+
+  kafka-2:
+    image: bitnami/kafka:2.8.1
+    container_name: kafka-2
+    ports:
+      - "9093:9093"
+      - "29093:29093"
+    networks:
+      - appnet
+    environment:
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_BROKER_ID=2
+      - KAFKA_ADVERTISED_PORT=9093
+      - KAFKA_ADVERTISED_HOST_NAME=kafka-2
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=INTERNAL://:9093,EXTERNAL://:29093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=INTERNAL://kafka-2:9093,EXTERNAL://localhost:29093
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_NUM_PARTITIONS=5
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=1
+    volumes:
+      - kafka_2_data:/bitnami/kafka
+    depends_on:
+      - zookeeper
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:master
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    networks:
+      - appnet
+    environment:
+      KAFKA_CLUSTERS_0_NAME: provider_to_splitter
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      KAFKA_CLUSTERS_1_NAME: splitter_to_operator
+      KAFKA_CLUSTERS_1_BOOTSTRAPSERVERS: kafka-2:9093
+      KAFKA_CLUSTERS_1_ZOOKEEPER: zookeeper:2181
+    depends_on:
+      - zookeeper
+      - kafka-1
+      - kafka-2
+
+  data-provider:
+    image: data-provider
+    container_name: data-provider
+    environment:
+      VERBOSE: 1
+      SLOW_MODE: True
+      DELAY_FACTOR: 5
+      RETRIES: 3
+      BOOTSTRAP_SERVER: kafka-1:9092
+    networks:
+      - appnet
+    volumes:
+      - /home/gabst/projects/big_data/data/:/data
+
+networks:
+  appnet:
+
+volumes:
+  flink_data_0:
+    driver: local
+    name: flink_data_0
+  flink_data_1:
+    driver: local
+    name: flink_data_1
+  zookeeper_data:
+    driver: local
+    name: zookeeper_data
+  kafka_1_data:
+    driver: local
+    name: kafka_1_data
+  kafka_2_data:
+    driver: local
+    name: kafka_2_data

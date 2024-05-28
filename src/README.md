@@ -1,0 +1,1 @@
+This src folder is linked as volume to the pyflink containers, allowing access of files.

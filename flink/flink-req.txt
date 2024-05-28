@@ -1,0 +1,3 @@
+tensorflow-federated==0.69.0
+google
+scikit-learn
