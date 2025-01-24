@@ -1,0 +1,9 @@
+pandas
+numpy
+fastapi
+uvicorn
+torch
+requests
+kafka-python
+nltk
+scikit-learn
